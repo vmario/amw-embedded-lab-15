@@ -1,5 +1,5 @@
 ---
-title: "Ćwiczenie 13: Minimalizacja rozmiaru programu"
+title: "Ćwiczenie 15: Synchronizacja przerwania z pętlą główną"
 subtitle: "Instrukcja laboratorium"
 footer-left: "Instrukcja laboratorium"
 author: [Mariusz Chilmon <<mariusz.chilmon@ctm.gdynia.pl>>]
@@ -23,144 +23,108 @@ header-includes: |
 
 \lstset{language=[11]C++}
 
-> One of my most productive days was throwing away 1000 lines of code.
+> Fix the cause, not the symptom.
 >
-> — _Kenneth Lane Thompson_
+> — _Steve Maguire_
 
 # Cel ćwiczenia
 
 Celem ćwiczenia jest zapoznanie się z:
 
-* poziomami optymalizacji kompilatora GCC,
-* kosztem obliczeń zmiennoprzecinkowych,
-* kosztem pełnej implementacji funkcji z rodziny `printf()`.
+* wyłączaniem przerwań,
+* pojęciem atomowości operacji,
+* muteksami.
 
 # Uruchomienie programu wyjściowego
 
 1. Podłącz płytkę _LCD Keypad Shield_ do _Arduino Uno_.
 1. Podłącz termometr LM35DZ do linii _A5_.
-1. Na wyświetlaczu widoczny jest odczyt wartości z ADC, mierzącego napięcie z termometru scalonego LM35DZ, i obliczona na tej podstawie temperatura.
-1. **Zapisz w sprawozdaniu wyjściowy rozmiar programu (wersja zmiennoprzecinkowa).**
+1. Na wyświetlaczu widoczny jest odczyt wartości z ADC, mierzącego napięcie z termometru scalonego LM35DZ, obliczona na tej podstawie temperatura oraz liczba błędów odczytu danych z przerwania.
 
 \DefineLCDchar{degree}{00010001010001000000000000000000000}
 \begin{center}
 \LCD{2}{16}
-    |ADC: 204        |
+    |ADC: 204 E:   42|
     |TEMP:21.91{degree}C    |
-\captionof{figure}{Wyjściowy stan wyświetlacza}
+\captionof{figure}{Przykładowy stan wyświetlacza}
 \end{center}
+
+W przerwaniu `ADC_vect`, które wywoływane jest przez przetwornik analogowo-cyfrowy po zakończeniu każdego pomiaru, następuje odczyt tego pomiaru oraz przeliczenie go na temperaturę. Pomiar zapisywany jest w zmiennej globalnej `measurement` zaś temperatura w zmiennej `temperature`. Obie zadeklarowane są z użyciem kwalifikatora typu `volatile`, co gwarantuje, że funkcja `printMeasurement()`, wywoływana z pętli głównej, nie będzie cache'ować ich zawartości w rejestrach, ale zawsze dokona odczytu aktualnej wartości z pamięci RAM.
+
+Niestety, nie gwarantuje to odczytu poprawnych wartości. Odczyt należy rozumieć tu jako skopiowanie bajtów z obszaru pamięci operacyjnej, w której przechowywane są obie zmienne globalne, do obszaru pamięci zmiennych lokalnych lub do wybranych przez kompilator rejestrów. Nie jest możliwy odczyt zmiennej typu `uint16_t` lub `double` w jednej instrukcji, gdyż zajmują one więcej niż jeden bajt. Tym samym możliwe jest, że nastąpi skopiowanie części danych z pomiaru w chwili $t_0$, następnie proces kopiowania zostanie przerwany procedurą `ADC_vect`, po czym będzie kontynuowany, ale z&nbsp;użyciem nowego pomiaru z chwili $t_1$.
+
+Ponieważ w przypadku pojedynczych zmiennych trudno jest ocenić, czy odczyt jest poprawny (złożony z jednego pomiaru) czy błędny (złożony z dwóch pomiarów), szczególnie, gdy każda wartość z zakresu zmiennej może być prawidłowa. Z tego powodu w przykładowym programie sprawdzamy, czy pomiar i obliczona temperatura są ze sobą zgodne (odczyt z jednego pomiaru) czy nie (odczyt z dwóch pomiarów).
+
+\awesomebox[teal]{2pt}{\faCode}{teal}{W celu zwiększenia prawdopodobieństwa wystąpienia błędu wprowadzono zmienną \lstinline{slowDown}, z użyciem której zmniejszono częstotliwość odświeżania wyświetlacza, dzięki czemu średnia szybkość wykonywania pętli głównej znacząco wzrosła, a wraz z~nią — prawdopodobieństwo przerwania odczytu przez procedurę \lstinline{ADC_vect}.}
 
 # Zadanie podstawowe
 
-Celem zadania podstawowego jest zmniejszenie rozmiaru programu przez zastąpienie obliczeń zmiennoprzecinkowych obliczeniami na liczbach całkowitych. 
-
-## Wymagania funkcjonalne
-
-1. Funkcjowanie urządzenia nie zmienia się[^1].
-1. Następuje zmniejszenie rozmiaru programu o około 400&nbsp;B…500&nbsp;B.
-
-[^1]: Wynik pomiaru może różnić się o 0,01\textcelsius{ } ze względu na brak zaokrąglania przy obliczeniach całkowitych.
-
-## Modyfikacja programu
-
-### Opis rozwiązania wyjściowego (operacji zmiennoprzecinkowych)
-
-Zależność między odczytem $ADC$ z 10-bitowego przetwornika analogowo-cyfrowego a&nbsp;temperaturą&nbsp;$T$, wyznaczona w&nbsp;oparciu o&nbsp;dokumentację ADC oraz termometru scalonego LM35DZ, wyraża się wzorem:
-
-\begin{equation}
-T = \frac{V_{REF}\cdot ADC}{2^{10}} \cdot 100\frac{\text{\textcelsius}}{\text{V}}
-\end{equation}
-
-co przy napięciu referencyjnym 1,1&nbsp;V daje:
-
-\begin{equation}
-T = \frac{1{,}1\cdot ADC}{1024} \cdot 100\text{\textcelsius}
-\end{equation}
-
-z czego wynika:
-
-```
-double temperature = 1.1 * measurement / 1024 * 100;
-```
-
-co z kolei można zamienić na tekst w buforze `char buf[]` za pomocą funkcji `snprintf()`:
-
-```
-snprintf(buf, sizeof(buf), "%5.2f", temperature);
-```
-
-która wartość zmiennoprzecinkową `temperature` formatuje do postaci tekstowej za pomocą parametru `"%5.2f"`:
-
-\begin{description}
-\item[\%]
-Prefiks oznaczający pole formatujące.
-\item[5]
-Szerokość pola (tu: 5 znaków, włącznie z kropką dziesiętną).
-\item[.2]
-Precyzja — liczba cyfr części ułamkowej (tu: 2 miejsca po przecinku).
-\item[f]
-Formatowanie liczby zmiennoprzecinkowej do formatu ułamka dziesiętnego.
-\end{description}
-
-### Zamiana obliczeń zmiennoprzecinkowych na całkowite
-
-Zauważ, że w ramach określonej precyzji wyniku można zastąpić obliczenia zmiennoprzecinkowe obliczeniami na liczbach całkowitych, np. obliczenia na długościach wyrażonych w ułamkach metra można zastąpić obliczeniami na tych samych długościach wyrażonych w milimetrach — jeżeli nie dochodzi do utraty dokładności, jest to tylko zmiana sposobu zapisu liczb.
-
-Weźmy na przykład obliczenia:
- 
-```
-double result = 3.14 * 1.42;
-printf("%5.3f\n", result);
-// Wynik: "4.459"
-```
-
-Możemy przeskalować wartości ułamkowe do wartości całkowitych, a wynik wyświetlić jako dwie liczby całkowite oddzielone kropką. Przed kropką mamy część całkowitą uzyskaną za pomocą dzielenia całkowitego `fixed / 1000` zaś za kropką mamy część ułamkową, która jest resztą z tego dzielenia `fixed % 1000`.
-
-Należy tylko zauważyć, że pomnożyliśmy obie stałe przez 100, więc wynik jest $100 \cdot 100 = 10000$ razy większy od oczekiwanego. Ponieważ na potrzeby wyświetlania dzielimy go tylko przez 1000, należy go jeszcze przeskalować o rząd wielkości dzieląc przez dziesięć.
-
-```
-uint32_t fixed = 314 * 142 / 10;
-printf("%1u.%03u\n", fixed / 1000, fixed % 1000);
-// Wynik: "4.458"
-```
-
-\awesomebox[teal]{2pt}{\faCode}{teal}{Wynik różni się na najmniej znaczącej pozycji ze względu na to, że dzielenie całkowite odrzuca część ułamkową (ignoruje resztę z dzielenia), nie dokonując zaokrąglenia. Akceptujemy ten błąd na potrzeby ćwiczenia, można go jednak obsłużyć, samodzielnie implementując zaokrąglenie.}
-
-Przeprowadź analogiczną redukcję obliczeń pomiaru temperatury w funkcji `printMeasurement()`, zmieniając wartość zmiennoprzecinkową `1.1` na wartość całkowitą.
-
-W razie problemów pamiętaj, że:
-
-1. Dzielenie całkowite odrzuca część ułamkową, obniżając precyzję obliczeń, więc najlepiej wykonywać je na końcu.
-1. Nawet jeżeli ostateczny wynik obliczeń mieści się w zakresie np. typu `uint16_t`, to pośrednie obliczenia mogą ten typ przepełnić.
-1. Kompilator dobiera typ stosowany do obliczeń na podstawie pierwszej wartości w ciągu obliczeń.
-1. Dla kompilatora AVR-GCC typem domyślnym jest 16-bitowy `int` ze znakiem (`int16_t`), którego zakres jest znacznie mniejszy od 32-bitowego czy 64-bitowego stosowanego w komputerach PC.
-1. Aby nastąpiła redukcja rozmiar programu, nie może on w żadnym miejscu wykonywać operacji zmiennoprzecinkowych.
-
-\awesomebox[teal]{2pt}{\faCode}{teal}{Można wymusić na kompilatorze stosowanie szerszego typu. Wyrażenie \lstinline{1000 * 1000 / 1000} da nieprawidłowy wynik 16, gdyż liczba 1~000~000, będąca wynikiem mnożenia, nie mieści się w zakresie \lstinline{int16_t}. Prawidłowy wynik można uzyskać, każąc zacząć obliczenia na typie \lstinline{uint32_t} za pomocą wyrażenia \lstinline{UINT32_C(1000) * 1000 / 1000}.}
-
-# Zadanie rozszerzone
-
-Celem zadania rozszerzonego jest zmniejszenie rozmiaru programu przez użycie odpowiednich flag kompilatora i linkera.
+Celem zadania podstawowego jest poprawienie działania programu przez użycie bloku atomowego.
 
 ## Wymagania funkcjonalne
 
 1. Funkcjowanie urządzenia nie zmienia się.
-1. Następuje zmniejszenie rozmiaru programu.
+1. Liczba błędów spada do zera.
 
 ## Modyfikacja programu
 
-### Dobranie poziomu optymalizacji kompilatora
+### Czasowe blokowanie przerwań
 
-Znajdź w pliku \texttt{Makefile} zmienną `OPTIMIZATION` i sprawdź jej wpływ na rozmiar programu, korzystając z tabeli w sprawozdaniu.
+Użyj funkcji `cli()` i `sei()`, by wyłączyć przerwania w funkcji `printMeasurement()` na czas odczytu i włączyć je z&nbsp;powrotem po zakończeniu tego procesu. To powinno całkowicie wyeliminować błędy odczytu, gdyż odczyt danych nie będzie przerywany obsługą przerwania.
 
-\awesomebox[teal]{2pt}{\faCode}{teal}{Plik \texttt{Makefile} odpowiedzialny jest za śledzenie zmian w kodzie źródłowym i nie wykrywa on zmian w samym sobie. Oznacza to, że przed każdym zbudowaniem programu należy wywołać zadanie \lstinline{clean}, żeby kompilacja przebiegła od początku.}
+### Użycie bloku atomowego
 
-### Użycie uproszczonej implementacji funkcji rodziny `printf()`
+Zastosowanie pary `cli()` / `sei()` ma trzy wady (wymienione od najmniej ważnej):
 
-Po zmianie obliczeń ze zmiennoprzecinkowych na stałoprzecinkowe możliwe jest użycie biblioteki z uproszczonymi funkcjami rodziny `printf()`. W tym celu z pliku \texttt{Makefile} należy usunąć linię z&nbsp;flagami linkera, które nakazują mu użycie biblioteki wspierającej operacje zmiennoprzecinkowe zamiast domyślnej, uproszczonej:
+1. Blok wykonywany przy wyłączonych przerwaniach nie jest wyraźnie wydzielony w strukturze kodu.
+1. Kompilator nie jest świadomy zależności między nimi, nie wyłapuje więc błędu polegającego na wyłączeniu przerwań na stałe (braku wywołania `sei()`).
+1. Jeżeli nie znamy sposobu obsługi przerwań w obrębie całego programu, możemy doprowadzić do niezamierzonego włączenia przerwań, gdy użyjemy tej pary w sytuacji, gdy przerwania są już wyłączone.
 
-```Makefile
-LDFLAGS += -Wl,-u,vfprintf -lprintf_flt
+Problemy te można rozwiązać, stosując makro `ATOMIC_BLOCK()`. Przyjmuje ono jako argument dwie opcje:
+
+\begin{description}
+\item[ATOMIC\_FORCEON]
+Po zakończeniu bloku przerwania są zawsze włączane, tak samo jak w naszym rozwiązaniu z parą \lstinline{cli()} / \lstinline{sei()}.
+\item[ATOMIC\_RESTORESTATE]
+Po zakończeniu bloku przerwania są przywracane do stan zapisanego przed wejściem do bloku.
+\end{description}
+
+Użyj drugiej opcji — bardziej uniwersalnej choć wymagającej więcej instrukcji.
+
+\awesomebox[teal]{2pt}{\faCode}{teal}{W programowaniu operacja atomowa to operacja niepodzielna — wykonuje się w całości lub w ogóle. Przykładem takich operacji są operacje w bazach danych czy operacje bankowe — przelew między kontami nie może wykonać się częściowo, np. zmniejszając saldo nadawcy, ale nie zwiększając salda odbiorcy.}
+
+# Zadanie rozszerzone
+
+Celem zadania rozszerzonego jest synchronizacja przerwania z pętlą główną za pomocą zmiennej pełniącej rolę semafora.
+
+## Wymagania funkcjonalne
+
+1. Funkcjowanie urządzenia nie zmienia się.
+
+## Modyfikacja programu
+
+### Usunięcie bloku atomowego
+
+Cofnij zmiany wprowadzone w zadaniu podstawowym — usuń makro `ATOMIC_BLOCK()`, pozostawiając odczyt zmiennych globalnych w funkcji `printMeasurement()`.
+
+### Komunikacja za pomocą semafora
+
+Dodaj do programu zmienną globalną typu, który mieści się w jednym bajcie, np. `uint8_t`. Taką zmienną można uznać za atomową, ponieważ zarówno odczyt jak i zapis wykonuje się w jednym takcie zegara.
+
+Instrukcje w procedurze obsługi przerwania należy obwarować zależnością np. od stanu `false` zmiennej, a po ich wykonaniu zmienić stan zmiennej na przeciwny, np.:
+
+```
+if (semaphore == false) {
+    // Interrupt instructions.
+    semaphore = true;
+}
 ```
 
-\awesomebox[teal]{2pt}{\faCode}{teal}{Pełna implementacja funkcji \lstinline{printf()} jest bardzo wymagająca, gdyż osbługuje wiele formatów. Szczególnie wymagające jest formatowanie typów zmiennoprzecinkowych ze względu na możliwości standardu IEEE~754 oraz złożoność obliczeń potrzebnych do obsługi różnych sposobów reprezentacji ułamków. Z tego powodu w systemach wbudowanych często stosuje się zredukowane biblioteki standardowe.}
+Zapis do zmiennych z wartością pomiaru i temperatury nastąpi więc tylko, gdy semafor będzie miał wartość `false`, a zmiana jego stanu na `true` poinformuje pętlę główną, że może dokonać odczytu:
+
+```
+if (semaphore == true) {
+    // Main loop instructions.
+    semaphore = false;
+}
+```
