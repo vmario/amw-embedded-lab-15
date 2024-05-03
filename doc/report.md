@@ -1,5 +1,5 @@
 ---
-title: "Ćwiczenie 13: Minimalizacja rozmiaru programu"
+title: "Ćwiczenie 15: Synchronizacja przerwania z pętlą główną"
 author: [Mariusz Chilmon <<mariusz.chilmon@ctm.gdynia.pl>>]
 lang: "pl"
 titlepage: no
@@ -37,56 +37,22 @@ _W trosce o Państwa wyniki proszę o czytelne wpisywanie nazwisk._
 
 ## Zadanie podstawowe
 
-Odczytaj z komunikatów procesu kompilacji rozmiar programu w pamięci Flash (\texttt{Program}) i rozmiar danych w pamięci RAM (\texttt{Data}) dla obu wersji programu.
+Oszacuj liczbę błędów na minutę.
 
-\begin{center}
-\begin{tabular}{|c|c|c|} 
-\hline
-\textbf{Obliczenia} & \textbf{Rozmiar programu} & \textbf{Rozmiar danych} \\
-\hline
-zmiennoprzecinkowe & \hphantom{WWWWWWWWWW} & \hphantom{WWWWWWWWWW} \\
-\hline
-całkowite &  & \\
-\hline
-\end{tabular}
-\end{center}
+\vspace{1.5cm}
+
+W jaki sposób liczba błędów zależy od dynamiki zmian temperatury?
+
+\vspace{1.5cm}
 
 ## Zadanie rozszerzone
 
-Odczytaj z komunikatów procesu kompilacji rozmiar programu w pamięci Flash (\texttt{Program}) i rozmiar danych w pamięci RAM (\texttt{Data}) dla obu wersji programu.
+Czy przerwania są uruchamiane natychmiast po wykonaniu instrukcji SEI? Dlaczego?
 
-\begin{center}
-\begin{tabular}{|c|c|c|} 
-\hline
-\textbf{Poziom optymalizacji} & \textbf{Rozmiar programu} & \textbf{Rozmiar danych} \\
-\hline
-\texttt{-O0} & \hphantom{WWWWWWWWWW} & \hphantom{WWWWWWWWWW} \\
-\hline
-\texttt{-O1} &  & \\
-\hline
-\texttt{-O2} &  & \\
-\hline
-\texttt{-Os} &  & \\
-\hline
-\end{tabular}
-\end{center}
-
-Odczytaj z komunikatów procesu kompilacji rozmiar programu w pamięci Flash (\texttt{Program}) i rozmiar danych w pamięci RAM (\texttt{Data}) dla obu wersji programu.
-
-\begin{center}
-\begin{tabular}{|c|c|c|} 
-\hline
-\textbf{Biblioteka \texttt{printf}} & \textbf{Rozmiar programu} & \textbf{Rozmiar danych} \\
-\hline
-zmiennoprzecinkowa & \hphantom{WWWWWWWWWW} & \hphantom{WWWWWWWWWW} \\
-\hline
-uproszczona &  & \\
-\hline
-\end{tabular}
-\end{center}
+\vspace{1.5cm}
 
 ## \faCertificate&nbsp; Zadanie specjalne
 
 _+1 pkt dla osoby, która jako pierwsza poda poprawną odpowiedź._
 
-Dlaczego wynikiem wyrażenia `1000 * 1000 / 1000` jest 16? (Podaj przebieg obliczeń prowadzących do tego wyniku).
+Jak spowolnić działanie ADC?
