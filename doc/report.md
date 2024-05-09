@@ -55,4 +55,4 @@ Czy przerwania są uruchamiane natychmiast po wykonaniu instrukcji SEI? Dlaczego
 
 _+1 pkt dla osoby, która jako pierwsza poda poprawną odpowiedź._
 
-Jak spowolnić działanie ADC?
+Po zaimplementowaniu synchronizacji między pętlą główną a obsługą przerwania ADC zmniejszanie częstotliwości odświeżania wyświetlacza za pomocą zmiennej `slowDown` nie jest już potrzebne. Usunięcie tego spowolnienia skutkuje jednak bardzo częstymi zmianami wartości na wyświetlaczu, przez co czytelność wyświetlanej temperatury jest bardzo słaba. Jak zmniejszyć częstotliwość pomiaru wykonywanego przez ADC, nie obciążając przy tym CPU żadnymi opóźnieniami?
